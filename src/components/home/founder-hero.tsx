@@ -228,14 +228,14 @@ export default function FounderHero() {
               </a>
               <Link
                 href="/projects"
-                className={`inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 font-medium transition-all border hover:scale-[1.03] active:scale-[0.98] text-sm sm:text-base ${
+                className={`inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 font-semibold transition-all border hover:scale-[1.03] active:scale-[0.98] text-sm sm:text-base ${
                   isLight
-                    ? "bg-white border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50"
-                    : "bg-white/[0.03] border-white/10 text-white hover:bg-white/[0.06] hover:border-white/20"
+                    ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300"
+                    : "bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20 hover:border-indigo-500/50"
                 }`}
               >
                 View work
-                <ArrowRight size={14} className="opacity-70" />
+                <ArrowRight size={14} />
               </Link>
             </motion.div>
 

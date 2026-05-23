@@ -36,11 +36,33 @@ export default function Spotlight() {
 
   if (isMobile) return null;
 
+  const gradient = isLight
+    ? "radial-gradient(circle, rgba(99,102,241,0.05) 0%, rgba(99,102,241,0.02) 25%, transparent 60%)"
+    : "radial-gradient(circle, rgba(99,102,241,0.10) 0%, rgba(99,102,241,0.06) 20%, rgba(129,140,248,0.03) 40%, transparent 65%)";
+
   return (
-    <div className={`spotlight ${active ? "spotlight-active" : ""} ${isLight ? "spotlight-light" : ""}`}>
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 9998,
+        overflow: "hidden",
+      }}
+    >
       <div
-        className="spotlight-inner"
-        style={{ left: pos.x, top: pos.y, willChange: "transform, opacity" }}
+        style={{
+          position: "absolute",
+          width: 700,
+          height: 700,
+          left: pos.x,
+          top: pos.y,
+          background: gradient,
+          transform: "translate(-50%, -50%)",
+          opacity: active ? 1 : 0,
+          transition: "opacity 0.6s ease-out",
+          willChange: "transform, opacity",
+        }}
       />
     </div>
   );
