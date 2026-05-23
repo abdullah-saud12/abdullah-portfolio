@@ -1,0 +1,186 @@
+---
+title: "What Nobody Tells You About Running Node.js in Production"
+date: "2024-12-03"
+description: "Memory leaks, event loop blocking, graceful shutdowns, and the other things you only learn after something breaks in production. Lessons from running Node.js services at scale."
+tags: ["Node.js", "Backend", "Production", "DevOps"]
+author: "Abdullah Saud"
+readingTime: "7 min read"
+imageUrl: "https://images.unsplash.com/photo-1629654297299-c8506221ca97?w=800&auto=format&fit=crop"
+featured: false
+isHidden: false
+---
+
+Node.js in tutorials: fast, simple, great for APIs. Node.js in production: memory grows for no apparent reason, one synchronous operation tanks every request, and your process exits without telling you why.
+
+None of this is Node's fault. It's the event loop model — powerful, but with sharp edges. Here are the ones that have cut me.
+
+## Memory Leaks Look Like Everything Else Until They Don't
+
+Node.js has a garbage collector. It cleans up unreferenced objects. The problem is that you can accidentally hold references to things you don't intend to — and those things never get cleaned up.
+
+Common culprits:
+
+**Event listeners that accumulate.** Every `emitter.on('event', handler)` adds a handler to a list. If you're creating event emitters inside request handlers and not cleaning them up, you'll accumulate handlers with every request.
+
+```javascript
+// Bad: adds a new listener every time this function runs
+function handleRequest(req, res) {
+  redis.on('error', (err) => {
+    console.error('Redis error', err);
+  });
+  // ...
+}
+
+// Better: add the listener once, outside the request handler
+redis.on('error', (err) => {
+  console.error('Redis error', err);
+});
+```
+
+**Closures holding large objects.** A closure keeps a reference to everything in its outer scope. If that scope holds a large object, the large object lives as long as the closure does.
+
+**Growing caches with no eviction.** An in-process cache (a plain object or Map) that you add to but never remove from is a memory leak disguised as a feature. Use LRU caches with size limits if you cache in memory.
+
+How do you find leaks? Take heap snapshots before and after load testing. Use `--inspect` to open the Chrome DevTools profiler against a running Node process. Look for objects that accumulate across snapshots that shouldn't.
+
+## Synchronous Code Blocks Everything
+
+The event loop is single-threaded. While it's executing synchronous code, nothing else runs — no incoming requests, no timers, nothing.
+
+A few milliseconds of sync work per request is fine. Tens of milliseconds starts to hurt under load. Anything CPU-intensive (parsing large JSON, running regex on big strings, cryptographic operations in pure JS) will make your server unresponsive.
+
+```javascript
+// This blocks the event loop for potentially hundreds of ms
+app.get('/export', (req, res) => {
+  const data = db.getMillionRows();       // already async, fine
+  const csv = convertToCSV(data);         // synchronous, 200ms
+  res.send(csv);
+});
+```
+
+Solutions:
+- **Offload to worker threads** for CPU-bound work. `worker_threads` is built into Node since v12.
+- **Stream instead of buffer** — generate CSV row by row and pipe it to the response instead of building it all in memory.
+- **Chunk the work** — break large synchronous operations into smaller ones scheduled with `setImmediate` to yield back to the event loop between chunks.
+
+Monitor your event loop lag. The `perf_hooks` module in Node can measure it, and most APM tools (Datadog, New Relic, etc.) track it automatically. If event loop lag is regularly above 50ms under normal load, you have a blocking operation somewhere.
+
+## Unhandled Promise Rejections Will Bite You
+
+In old versions of Node, an unhandled promise rejection printed a warning and continued. Starting from Node 15, it crashes the process.
+
+This is a good thing — silent failures are worse than crashes. But if you're not handling rejections consistently, your service will start dying in production for reasons that are hard to trace.
+
+The pattern I use:
+
+```javascript
+// Always have a global handler as a safety net
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled promise rejection', { reason, promise });
+  // Optionally: exit and let your process manager restart
+  process.exit(1);
+});
+
+// But prefer explicit handling at the call site
+async function processPayment(orderId) {
+  try {
+    await stripe.charge(orderId);
+  } catch (err) {
+    logger.error('Payment failed', { orderId, err });
+    throw new PaymentError('Charge failed', { cause: err });
+  }
+}
+```
+
+Never use `.catch(() => {})` to silently swallow errors. If you're catching, log or re-throw. Silent swallows hide bugs that will surface much later in a confusing way.
+
+## Graceful Shutdown Is Not Optional
+
+When your process manager (Kubernetes, systemd, PM2) wants to restart your service, it sends `SIGTERM`. By default, Node exits immediately. Any in-flight requests get dropped. Any open database transactions get abandoned.
+
+Handle `SIGTERM` properly:
+
+```javascript
+const server = app.listen(3000);
+
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  
+  // Stop accepting new connections
+  server.close(async () => {
+    // Wait for in-flight requests to complete
+    await db.pool.end();
+    await redis.quit();
+    console.log('Graceful shutdown complete');
+    process.exit(0);
+  });
+
+  // Force exit after 30 seconds if something is stuck
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+});
+```
+
+If you're on Kubernetes, make sure your `terminationGracePeriodSeconds` in the pod spec is longer than your forced shutdown timeout. Otherwise Kubernetes will SIGKILL your process before it finishes.
+
+## Environment Configuration Done Right
+
+I've seen `.env` files committed to git. I've seen production secrets hardcoded in source. Don't do this. Here's the minimum viable approach:
+
+```javascript
+// config.js — validate at startup, fail fast if something is missing
+const required = ['DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'PORT'];
+
+for (const key of required) {
+  if (!process.env[key]) {
+    throw new Error(`Missing required environment variable: ${key}`);
+  }
+}
+
+export const config = {
+  database: { url: process.env.DATABASE_URL },
+  redis: { url: process.env.REDIS_URL },
+  jwt: { secret: process.env.JWT_SECRET },
+  port: parseInt(process.env.PORT, 10),
+};
+```
+
+The key principle: **fail at startup, not at runtime**. If `JWT_SECRET` is missing, find out when the process starts — not when the first user tries to log in.
+
+## Structured Logging Makes Everything Easier
+
+`console.log('user logged in')` is fine locally. In production, you need to filter, search, and correlate logs across services and time.
+
+Use structured JSON logging:
+
+```javascript
+import pino from 'pino';
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+});
+
+// Bad: string message, no context
+console.log('Order processed');
+
+// Good: structured, searchable, filterable
+logger.info({ orderId, userId, amount }, 'Order processed successfully');
+logger.error({ orderId, err }, 'Order processing failed');
+```
+
+Add a request ID to every log in a request's lifecycle — this lets you trace a single request through all its log lines when debugging production issues.
+
+## The Checklist Before You Ship a Node Service
+
+- [ ] Memory profiled under sustained load — no growing heap
+- [ ] Event loop lag monitored — no blocking operations
+- [ ] All promise rejections handled or logged
+- [ ] Graceful `SIGTERM` shutdown implemented
+- [ ] Required config validated at startup
+- [ ] Structured logging with request IDs
+- [ ] Health check endpoint (`/health`) that's actually checking dependencies
+- [ ] Process manager configured to restart on crash with backoff
+
+Node is excellent for I/O-heavy services. Treat it right and it'll handle enormous load with minimal resources. Ignore its quirks and it'll fail in ways that are genuinely confusing to debug.

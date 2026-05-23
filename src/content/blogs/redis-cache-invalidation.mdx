@@ -1,0 +1,124 @@
+---
+title: "The Redis Mistake That Taught Me What Cache Invalidation Really Means"
+date: "2025-03-18"
+description: "I once served stale data to users for six hours without knowing it. Here's what I learned about cache invalidation, TTLs, and why 'just cache it' is not a strategy."
+tags: ["Redis", "Caching", "Backend", "Architecture"]
+author: "Abdullah Saud"
+readingTime: "6 min read"
+imageUrl: "https://images.unsplash.com/photo-1544197150-b99a580bb7a8?w=800&auto=format&fit=crop"
+featured: true
+isHidden: false
+---
+
+There's a famous quote in computer science: "There are only two hard things in computer science: cache invalidation and naming things." I used to think this was a joke. It's not.
+
+Six months into my first production system with Redis, I made a mistake that served wrong pricing data to users for six hours. Nobody caught it until a user complained that they'd been charged differently than what the UI showed. The cache had stale data. I had a TTL of 24 hours. The prices changed. The cache didn't.
+
+That incident made me actually understand caching instead of just using it.
+
+## What Caching Actually Is
+
+Caching is a trade-off. You're trading consistency for speed. You're saying: "I'm okay with this data being slightly out of date in exchange for not hitting the database every time."
+
+The question you need to answer before caching anything is: **how stale is too stale for this specific piece of data?**
+
+- User profile photo: stale for an hour is fine
+- Product price: stale for 5 minutes is risky
+- Account balance: never cache without a strategy
+- Static config: stale for a day is probably fine
+
+Most developers skip this question and just set a TTL that feels reasonable. That's how you end up serving wrong data.
+
+## The Three Cache Invalidation Strategies
+
+There are really only a few ways to handle invalidation:
+
+**TTL-based expiry** is the simplest. Set a time, let it expire. Good for data that changes on a predictable schedule or where slight staleness is acceptable. The problem is that your cache and your source of truth can diverge for the entire TTL window.
+
+**Write-through invalidation** means whenever you write to the database, you also update or delete the cache entry. This keeps things consistent but adds complexity — now every write operation has two steps, and they can fail independently.
+
+```javascript
+async function updateUserProfile(userId, data) {
+  await db.users.update({ where: { id: userId }, data });
+  await redis.del(`user:${userId}`);  // invalidate, don't update
+}
+```
+
+I prefer deleting over updating the cache on writes. Updating means you have to serialize the data in two places. Deleting means the next read will repopulate it fresh. The downside is a cache miss on the next request, but that's usually acceptable.
+
+**Event-driven invalidation** is the most robust for distributed systems. When data changes, publish an event. All services that cache that data listen for the event and invalidate. This decouples your write path from cache management but requires a message broker and more infrastructure.
+
+## The Stampede Problem
+
+Here's a scenario nobody tells you about when you're starting out.
+
+Your cache key expires. At that exact moment, 500 concurrent requests hit your API. All 500 see a cache miss. All 500 query the database simultaneously. Your database goes from 10 queries/second to 500 queries/second in an instant. It falls over.
+
+This is called a **cache stampede** or **thundering herd**.
+
+The fix is a pattern called "lock-and-populate":
+
+```javascript
+async function getWithLock(key, fetchFn, ttl) {
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached);
+
+  // Try to acquire a lock
+  const lock = await redis.set(`lock:${key}`, '1', 'NX', 'EX', 10);
+  
+  if (!lock) {
+    // Someone else is fetching, wait briefly and retry
+    await sleep(100);
+    return getWithLock(key, fetchFn, ttl);
+  }
+
+  try {
+    const data = await fetchFn();
+    await redis.setex(key, ttl, JSON.stringify(data));
+    return data;
+  } finally {
+    await redis.del(`lock:${key}`);
+  }
+}
+```
+
+For less critical data, a simpler approach is **probabilistic early expiration** — randomly refresh the cache slightly before it expires, so you never have a hard miss.
+
+## Cache Key Design Matters More Than You Think
+
+I've seen caches where everything is stored under generic keys like `users` or `products`. The problem is these keys represent entire collections, so you can never invalidate a single user — you have to blow up the whole cache.
+
+Design your cache keys to be as specific as the data they represent:
+
+```
+user:{id}                    → single user profile
+user:{id}:orders             → user's orders
+product:{id}                 → product details
+product:{id}:price:{region}  → regional pricing
+config:global                → app-wide config
+```
+
+This way, when user 42 updates their profile, you invalidate `user:42` — not every user in the cache.
+
+Also, version your cache keys when you change your data schema. If you change the shape of what's stored under `user:{id}`, add a version prefix: `v2:user:{id}`. This prevents deserialization errors when you deploy changes.
+
+## When Not to Cache
+
+After that pricing incident, I started asking "should we even cache this?" before adding Redis to anything.
+
+Don't cache:
+- **Frequently mutated data** where consistency matters (account balances, inventory counts, real-time statuses)
+- **User-specific sensitive data** unless you're extremely careful about key isolation
+- **Small datasets** that are already fast to query — adding a cache layer adds latency and complexity for no gain
+- **Data with complex invalidation** requirements that you haven't fully designed yet
+
+Caching is easy to add and hard to remove. Once your system depends on a cache being fast, removing it feels impossible. Think about it before you add it.
+
+## What I Do Now
+
+Before caching anything, I write down three things:
+1. How stale is acceptable for this data?
+2. What triggers invalidation?
+3. What happens if the cache is wrong?
+
+If I can't answer all three, I don't cache it yet. The database is often fast enough, and a slow-but-correct system beats a fast-but-wrong one every time.

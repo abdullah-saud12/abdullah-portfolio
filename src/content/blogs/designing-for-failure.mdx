@@ -1,0 +1,180 @@
+---
+title: "Designing for Failure: What I Learned Building Systems That Stay Up"
+date: "2024-11-07"
+description: "Every distributed system will fail. The question is whether it fails gracefully or catastrophically. Here's how I think about resilience: timeouts, retries, circuit breakers, and the fallbacks that actually matter."
+tags: ["Architecture", "Backend", "Distributed Systems", "Reliability"]
+author: "Abdullah Saud"
+readingTime: "8 min read"
+imageUrl: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&auto=format&fit=crop"
+featured: false
+isHidden: false
+---
+
+Early in my career I thought "making something reliable" meant writing better code. Fewer bugs, more tests, cleaner logic. And those things matter. But they're not what keeps a distributed system up when one of its dependencies is having a bad day.
+
+What keeps systems up is designing explicitly for the failure modes you know are coming.
+
+## The Three Failure Modes You'll Actually See
+
+In practice, almost every outage I've been part of traces back to one of three things:
+
+**Slow dependencies.** A database is under load. A third-party API is struggling. An internal service has a memory leak. It's not down — it's just slow. Your requests are completing, but they're taking 5 seconds instead of 50ms. Without timeouts, these slow requests pile up, hold resources, and eventually take your service down too.
+
+**Cascading failures.** Service A calls Service B. Service B calls Service C. Service C is down. Service B hangs waiting for C. Service A hangs waiting for B. Now everything is down, and it all looks like Service A failed — which makes debugging take twice as long.
+
+**Retry storms.** Service C recovers. A million retried requests hit it simultaneously. It falls over again. Repeat until someone manually intervenes.
+
+Every resilience pattern is essentially a solution to one or more of these three problems.
+
+## Timeouts Are Not Optional
+
+I don't connect to anything without a timeout. Not a database. Not a cache. Not an internal service. Not an external API. No timeout means "wait forever," and in a distributed system, things can hang indefinitely.
+
+The question is what timeout to set. I use the 99th percentile response time as a baseline, multiplied by 3. If your database query normally takes 10ms and p99 is 50ms, set a 150ms timeout. If calls regularly take longer than that, you have a performance problem worth solving separately.
+
+```javascript
+// Always set connect and request timeouts independently
+const response = await fetch(serviceUrl, {
+  signal: AbortSignal.timeout(3000),   // total request timeout
+});
+
+// For database connections
+const client = await pool.connect();
+// pg-pool has connectionTimeoutMillis for the pool level
+// and statement_timeout for query level
+await client.query('SET statement_timeout = 5000');
+```
+
+When a timeout fires, you know the operation took too long. Log it. Metric it. Return a graceful error. Don't log the timeout as a generic error — track timeouts specifically so you can see when your dependencies are degrading before they fully fail.
+
+## Retries Need Exponential Backoff and Jitter
+
+Retrying failed requests is usually the right call for transient failures — a network hiccup, a brief database restart, a momentary overload. But naive retries make things worse.
+
+If you retry immediately after a failure, and every client does the same thing at the same time, you create a retry storm that hammers the recovering service and kills it again.
+
+The solution is exponential backoff with jitter:
+
+```javascript
+async function withRetry(fn, options = {}) {
+  const { maxAttempts = 3, baseDelayMs = 100 } = options;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      
+      // Exponential backoff: 100ms, 200ms, 400ms...
+      const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
+      // Jitter: randomize within ±25% to spread out retries
+      const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+      const delay = Math.round(exponentialDelay + jitter);
+      
+      await sleep(delay);
+    }
+  }
+}
+```
+
+Also be selective about what you retry. Retry on network errors and 5xx responses. Don't retry on 4xx errors — a bad request is a bad request, retrying it won't help. And don't retry non-idempotent operations (POST requests that create records, payment charges) without careful consideration.
+
+## Circuit Breakers: Stop Hitting Things That Are Down
+
+A circuit breaker is a pattern that tracks failure rates and "opens" the circuit when failures exceed a threshold — meaning it stops forwarding requests to the failing dependency entirely and fails fast instead.
+
+Three states:
+- **Closed** — requests go through normally
+- **Open** — requests fail immediately without hitting the dependency
+- **Half-open** — after a recovery period, let a few requests through to test if the dependency is back
+
+```javascript
+class CircuitBreaker {
+  constructor(fn, { failureThreshold = 5, recoveryTimeMs = 30000 } = {}) {
+    this.fn = fn;
+    this.state = 'closed';
+    this.failures = 0;
+    this.failureThreshold = failureThreshold;
+    this.recoveryTimeMs = recoveryTimeMs;
+    this.nextAttempt = Date.now();
+  }
+
+  async call(...args) {
+    if (this.state === 'open') {
+      if (Date.now() < this.nextAttempt) {
+        throw new Error('Circuit open — service unavailable');
+      }
+      this.state = 'half-open';
+    }
+
+    try {
+      const result = await this.fn(...args);
+      this.onSuccess();
+      return result;
+    } catch (err) {
+      this.onFailure();
+      throw err;
+    }
+  }
+
+  onSuccess() {
+    this.failures = 0;
+    this.state = 'closed';
+  }
+
+  onFailure() {
+    this.failures++;
+    if (this.failures >= this.failureThreshold) {
+      this.state = 'open';
+      this.nextAttempt = Date.now() + this.recoveryTimeMs;
+    }
+  }
+}
+```
+
+Circuit breakers prevent your service from wasting resources on calls that are going to fail anyway. They also give the failing dependency time to recover without being constantly bombarded.
+
+## Fallbacks: What Do You Do When It Fails?
+
+A fallback is what you return when the primary path fails. Designing good fallbacks requires thinking about what your users actually need.
+
+Some useful patterns:
+
+**Serve stale data.** If your cache has an expired entry, return it anyway and flag it as stale. "This data is 2 hours old" is better than an error page for most use cases.
+
+**Return a degraded response.** If the personalization service is down, show a generic product listing. If the recommendation engine fails, show bestsellers. The feature is degraded, not gone.
+
+**Queue for later.** If the email service is down, write to a queue. Send when it recovers. Users don't get their confirmation email immediately, but they get it eventually.
+
+**Graceful error with context.** When you can't do anything useful, tell the user what's happening and when they can try again. "We're experiencing issues with payments. Please try again in a few minutes." is far better than a generic 500 error.
+
+The worst fallback is no fallback — where a dependency failure causes your entire service to return errors. Map out every dependency and decide what happens when each one is unavailable.
+
+## Observability Lets You Know When You're Failing
+
+None of this resilience infrastructure matters if you don't know when your circuit breakers are opening, when your retries are firing, when your timeouts are hitting.
+
+Instrument everything:
+
+```javascript
+// Count events, not just errors
+metrics.increment('circuit_breaker.calls', { service: 'payments', state: 'open' });
+metrics.histogram('retry.attempts', retryCount, { operation: 'charge_card' });
+metrics.histogram('timeout.duration', elapsed, { dependency: 'postgres' });
+```
+
+Set alerts on:
+- Circuit breaker open rate
+- Retry rate above a threshold
+- Timeout rate above a threshold
+- P95/P99 latency increasing
+
+You want to know a dependency is degrading before it's fully down. These metrics give you that early signal.
+
+## The Mental Model
+
+When I'm designing a service, I ask: "What happens to my users when X fails?" for every dependency X. If the answer is "everything breaks," that's the thing to fix first.
+
+Resilience isn't about making systems that never fail. It's about making systems that fail gracefully — that stay partially useful, that recover automatically, and that give operators the visibility to fix what needs fixing.
+
+That's a design decision, not a feature you add at the end.
