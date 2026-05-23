@@ -169,11 +169,11 @@ export default function FounderHero() {
               <p
                 className={`text-lg sm:text-xl md:text-2xl font-medium ${isLight ? "text-gray-600" : "text-gray-400"}`}
               >
-                Tell me the outcome.{" "}
+                You name the goal.{" "}
                 <span
                   className={`font-semibold ${isLight ? "text-gray-900" : "text-white"}`}
                 >
-                  I&apos;ll ship it.
+                  I&apos;ll close the gap.
                 </span>
               </p>
             </motion.div>
