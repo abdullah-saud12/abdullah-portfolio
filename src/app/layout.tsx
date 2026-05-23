@@ -6,6 +6,7 @@ import { AudienceProvider } from "@/context/audience-provider";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import OnekoCat from "@/components/oneko-cat";
+import Spotlight from "@/components/spotlight";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -73,6 +74,7 @@ export default function RootLayout({
             </main>
             <Footer />
             <OnekoCat />
+            <Spotlight />
           </AudienceProvider>
         </ThemeProvider>
       </body>
