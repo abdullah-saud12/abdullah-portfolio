@@ -22,7 +22,7 @@ export const projects: Project[] = [
     featured: true,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPuFUBv7VILjGC7RxNs1WqaPXeldA0nz3E968k",
     demoLink: "https://memcontext.in",
-    githubLink: "https://github.com/CyberBoyAyush/memcontext",
+    githubLink: "https://google.com",
   },
   {
     id: 2,
@@ -44,7 +44,7 @@ export const projects: Project[] = [
     featured: true,
     imageUrl: "https://res.cloudinary.com/dyetf2h9n/image/upload/v1768073623/ZENOX_e4boob.png",
     demoLink: "https://www.npmjs.com/package/zenox",
-    githubLink: "https://github.com/CyberBoyAyush/zenox",
+    githubLink: "https://google.com",
   },
   {
     id: 3,
@@ -66,7 +66,7 @@ export const projects: Project[] = [
     featured: true,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPipbvM9fLSeCsIaE1NktK9ur3Tyv6x4QMqg8z",
     demoLink: "https://www.npmjs.com/package/plnr",
-    githubLink: "https://github.com/CyberBoyAyush/plnr",
+    githubLink: "https://google.com",
     videoUrl: "https://www.youtube.com/embed/8VMi3AoLEz4?si=b5JoXW31UPcFPfLj",
   },
   {
@@ -89,7 +89,7 @@ export const projects: Project[] = [
     featured: true,
     imageUrl: "https://res.cloudinary.com/dyetf2h9n/image/upload/v1759138327/AV_1_zztl3w.png",
     demoLink: "https://cappychat.com",
-    githubLink: "https://github.com/cyberboyayush/CappyChat",
+    githubLink: "https://google.com",
     videoUrl: "https://www.youtube.com/embed/vP5HSx9GxjI?si=SwFiZUV4No-Ji8pV",
   },
   {
@@ -111,8 +111,8 @@ export const projects: Project[] = [
     category: "Web",
     featured: true,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPI5rAcrjSq8BcalUnAK51orufTp2SNkO7GxHz",
-    demoLink: "https://bucketbuddy.aysh.me/",
-    githubLink: "https://github.com/cyberboyayush/bucketbuddy",
+    demoLink: "https://google.com",
+    githubLink: "https://google.com",
   },
   {
     id: 6,
@@ -133,8 +133,8 @@ export const projects: Project[] = [
     category: "AI",
     featured: false,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPFe7ghJ5FxlZUcq1BwOub9PyMKG7d26vQfaTC",
-    demoLink: "https://tuduai.aysh.me/",
-    githubLink: "https://github.com/cyberboyayush/tuduai",
+    demoLink: "https://google.com",
+    githubLink: "https://google.com",
   },
   {
     id: 7,
@@ -155,8 +155,8 @@ export const projects: Project[] = [
     category: "AI",
     featured: false,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPfgNH3bZTmUXblVz2o8y4iIF6cHMBLqAhke5Y",
-    demoLink: "https://effisense.ayush-sharma.in/",
-    githubLink: "https://github.com/cyberboyayush/effisense",
+    demoLink: "https://google.com",
+    githubLink: "https://google.com",
   },
   {
     id: 8,
@@ -177,8 +177,8 @@ export const projects: Project[] = [
     category: "AI",
     featured: false,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPUFlBGN1k8DdHYcXLswQzrg6SM7qbVytx3Npf",
-    demoLink: "https://skillcompass.ayush-sharma.in/",
-    githubLink: "https://github.com/glucon-d/skillcompass",
+    demoLink: "https://google.com",
+    githubLink: "https://google.com",
     videoUrl: "https://www.youtube.com/embed/-7sjCjZc0SI?si=4UnRtmOgKWqKjA1t",
     isHackathonProject: true,
   },
@@ -200,8 +200,8 @@ export const projects: Project[] = [
     category: "Web",
     featured: false,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAP4yZsxBVEKBr0gueU6fJkSAaYjWMON8X2HPdV",
-    demoLink: "https://quickbang.aysh.me/",
-    githubLink: "https://github.com/cyberboyayush/quickbang",
+    demoLink: "https://google.com",
+    githubLink: "https://google.com",
   },
   {
     id: 10,
@@ -222,7 +222,7 @@ export const projects: Project[] = [
     featured: false,
     imageUrl: "https://1kf0b6y5pd.ufs.sh/f/whL3sWlbNOAPiVdP9VfLSeCsIaE1NktK9ur3Tyv6x4QMqg8z",
     demoLink: "https://portdevv.vercel.app/",
-    githubLink: "https://github.com/cyberboyayush/portdev",
+    githubLink: "https://google.com",
   },
 ];
 
