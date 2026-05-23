@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       // Project images from reference (stub data)
       { protocol: "https", hostname: "1kf0b6y5pd.ufs.sh" },
       { protocol: "https", hostname: "res.cloudinary.com" },
+      { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
   headers: async () => [

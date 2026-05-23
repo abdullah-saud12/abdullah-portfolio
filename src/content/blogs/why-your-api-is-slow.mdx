@@ -1,0 +1,109 @@
+---
+title: "Why Your API Is Slow (And It's Probably Not What You Think)"
+date: "2025-04-10"
+description: "Most slow APIs aren't slow because of bad code. They're slow because of N+1 queries, connection pool exhaustion, and missing indexes. Here's how to actually find the real culprit."
+tags: ["PostgreSQL", "Performance", "Node.js", "Backend"]
+author: "Abdullah Saud"
+readingTime: "7 min read"
+imageUrl: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=800&auto=format&fit=crop"
+featured: true
+isHidden: false
+---
+
+You've profiled your code. You've added caching. You've even rewritten a few functions to be more "efficient." And yet, your API still crawls at 800ms when it should be doing 50ms. I've been here more times than I'd like to admit.
+
+The truth is, most slow APIs aren't slow because of bad application code. The bottleneck is almost always somewhere else — and once you know where to look, fixing it is usually straightforward.
+
+## The N+1 Query Problem (It's Still Everywhere)
+
+This one never goes away. You fetch a list of users, then loop through them to fetch each user's orders. One query to get 100 users. 100 queries to get their orders. Your ORM made it look clean, so you didn't notice.
+
+```sql
+-- What you think is happening: 1 query
+SELECT * FROM users WHERE active = true;
+
+-- What's actually happening: 101 queries
+SELECT * FROM orders WHERE user_id = 1;
+SELECT * FROM orders WHERE user_id = 2;
+-- ... 99 more times
+```
+
+The fix is a JOIN or a `WHERE user_id = ANY($1)` batch query. If you're using an ORM like Prisma or TypeORM, look for `include` / `relations` options — they exist precisely to prevent this.
+
+How do you catch N+1 before it hits production? Log your query count per request. Anything above 10 queries for a single endpoint is a red flag worth investigating.
+
+## Your Connection Pool Is Too Small (Or Too Large)
+
+This one surprises people. Every database connection is a resource — a socket, some memory on the database server, a thread or process depending on the DB engine. PostgreSQL spawns a process per connection. 500 open connections means 500 processes, even if 480 of them are idle.
+
+The default pool size in most ORMs and connection libraries is either laughably small (5 connections) or dangerously unconfigured. Meanwhile, your server is getting hammered with 200 concurrent requests, each one waiting for a connection to free up.
+
+A rough starting formula: `pool_size = (num_cores * 2) + num_disk_spindles`. For a modern cloud instance with 4 vCPUs, 10-15 connections per application instance is a reasonable ceiling. If you're running multiple app instances, divide accordingly.
+
+```javascript
+// pg (node-postgres)
+const pool = new Pool({
+  max: 10,           // don't go crazy here
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+```
+
+PgBouncer is worth setting up if you have many app instances — it acts as a connection pooler in front of Postgres so your DB doesn't see hundreds of connections.
+
+## The Missing Index
+
+`EXPLAIN ANALYZE` is your best friend and most developers never run it. Before optimizing anything, run this on your slow query:
+
+```sql
+EXPLAIN ANALYZE
+SELECT * FROM orders
+WHERE user_id = 123 AND status = 'pending'
+ORDER BY created_at DESC;
+```
+
+If you see `Seq Scan` on a large table, that's a sequential scan — Postgres is reading every single row. Add an index on the columns you filter by:
+
+```sql
+CREATE INDEX CONCURRENTLY idx_orders_user_status
+ON orders (user_id, status, created_at DESC);
+```
+
+The `CONCURRENTLY` keyword lets Postgres build the index without locking the table, which matters in production. Column order matters too — put the most selective column first, and put range/sort columns last.
+
+## Serialization Is Slower Than You Think
+
+This one catches people off guard. You've got a fast query. You've got a connection. But you're serializing 50MB of data to JSON, sending it over the wire, and your client is parsing all of it. The query itself took 20ms. The JSON serialization took 400ms.
+
+Solutions:
+- **Paginate aggressively.** Return 20 rows, not 2000.
+- **Select only what you need.** `SELECT id, name, email` instead of `SELECT *`.
+- **Compression.** Gzip or Brotli on your HTTP responses. Most clients support it, most servers don't enable it by default.
+
+## Slow Third-Party Calls With No Timeout
+
+Your API calls an external service — a payment gateway, an SMS provider, an AI API. That service occasionally takes 10 seconds to respond. Your request sits there, holding a connection, blocking a thread (if you're using a thread-based model), and eventually timing out with a generic 500.
+
+Set timeouts. Always.
+
+```javascript
+const response = await fetch(externalServiceUrl, {
+  signal: AbortSignal.timeout(3000), // 3 second max
+});
+```
+
+And add a circuit breaker if that service is business-critical. When it's down, fail fast and return a degraded response instead of hanging every request.
+
+## How I Actually Debug This
+
+When an endpoint is slow, my process is:
+
+1. **Add request timing logs** — log the duration of every significant operation (DB queries, external calls, serialization).
+2. **Run EXPLAIN ANALYZE** on any query that touches a table with >10k rows.
+3. **Check the connection pool** — are requests queueing for a connection? Most pool libraries expose metrics.
+4. **Look for N+1** — log query count per request for a day, sort descending, fix the top offenders.
+5. **Check payload size** — log response sizes. Anything over 100KB from an API endpoint is worth questioning.
+
+Most of the time, steps 1-3 already reveal the culprit. The problem is almost never your application logic — it's the database, the network, or missing infrastructure configuration.
+
+Once you start looking at the right things, slow APIs become surprisingly fixable.

@@ -1,0 +1,180 @@
+---
+title: "Building LLM Agents That Actually Do Something Useful"
+date: "2025-02-25"
+description: "Everyone is building AI agents. Most of them hallucinate, loop forever, or do nothing at all. Here's what I've learned about making them reliable enough to ship to production."
+tags: ["AI", "LLM", "Python", "Backend", "Agents"]
+author: "Abdullah Saud"
+readingTime: "8 min read"
+imageUrl: "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&auto=format&fit=crop"
+featured: true
+isHidden: false
+---
+
+I've built enough LLM agents to know the pattern: you demo it and it's magical, you put it in front of real users and it falls apart. It misunderstands the task, calls the wrong tool, loops on an error, or just confidently does the wrong thing.
+
+The problem isn't the model. The models are good. The problem is how we build around them.
+
+## What an Agent Actually Is
+
+Strip away the hype and an LLM agent is this: a loop where the model decides what to do, does it, observes the result, and decides what to do next — until it's done.
+
+```
+while not done:
+    action = model.decide(current_state)
+    result = execute(action)
+    current_state = update(current_state, result)
+```
+
+That's it. The complexity comes from:
+- **What actions are available** (your tools)
+- **How you describe them** to the model
+- **How you handle errors** at each step
+- **When you stop** the loop
+
+Most agent bugs live in one of these four areas.
+
+## Tool Design Is Where You'll Spend 80% of Your Time
+
+The model doesn't know how to use your tools — you have to describe them. Bad tool descriptions lead to bad tool calls. And tool calls are where agents break.
+
+A tool description needs three things: what it does, what it expects, and what it returns. Be explicit about edge cases.
+
+**Bad:**
+```python
+def get_user(user_id):
+    """Get a user."""
+    ...
+```
+
+**Good:**
+```python
+def get_user(user_id: str) -> dict:
+    """
+    Fetch a single user by their UUID.
+    
+    Returns a dict with keys: id, email, name, created_at, status.
+    Returns None if the user does not exist.
+    Raises ValueError if user_id is not a valid UUID format.
+    
+    Do NOT use this to look up users by email — use search_users() instead.
+    """
+    ...
+```
+
+That last line matters. Models will use the most plausible tool for a task. If your tool descriptions are ambiguous, you'll get creative misuse that's hard to debug.
+
+## Errors Are Part of the Protocol, Not Exceptions to It
+
+Most agent frameworks treat tool errors as crashes. The loop dies, the user gets an error message, nobody knows what happened.
+
+Better approach: return structured errors that the model can reason about.
+
+```python
+def call_tool(tool_name, args):
+    try:
+        result = tools[tool_name](**args)
+        return {"status": "success", "result": result}
+    except ValidationError as e:
+        return {"status": "error", "type": "invalid_args", "message": str(e)}
+    except NotFoundError as e:
+        return {"status": "error", "type": "not_found", "message": str(e)}
+    except Exception as e:
+        return {"status": "error", "type": "unexpected", "message": "An unexpected error occurred. Try a different approach."}
+```
+
+When the model sees `{"status": "error", "type": "not_found"}`, it can decide to try a different tool, ask for clarification, or inform the user. When it sees a Python traceback, it hallucinates a fix.
+
+Hide implementation details from the model. Return decisions, not stack traces.
+
+## You Need a Hard Step Limit
+
+Without a step limit, your agent will loop forever when it gets confused. I've watched agents retry the same failing tool call 40 times, burning tokens and time. Always set a maximum number of steps.
+
+```python
+MAX_STEPS = 15
+
+for step in range(MAX_STEPS):
+    response = model.complete(messages)
+    
+    if response.is_final_answer:
+        return response.content
+    
+    tool_result = call_tool(response.tool_name, response.tool_args)
+    messages.append({"role": "tool", "content": tool_result})
+
+# If we get here, the agent didn't finish in time
+return "I wasn't able to complete this task. Here's what I tried: ..."
+```
+
+15 steps is usually enough for most tasks. If a task genuinely needs more, it's a sign you should break it into sub-tasks rather than increase the limit.
+
+## The System Prompt Is Your Most Powerful Lever
+
+Most developers write a two-sentence system prompt and wonder why the agent misbehaves. The system prompt defines the agent's worldview — what it knows, what it's allowed to do, and how it should handle uncertainty.
+
+Things your system prompt should always include:
+- **Scope** — what this agent is and isn't for
+- **Failure behavior** — what to do when it doesn't know something
+- **Output format** — exactly what a good response looks like
+- **Constraints** — things it should never do
+
+```
+You are a customer support agent for Acme Corp. You help users with:
+- Order status and tracking
+- Return and refund requests
+- Account management
+
+You do NOT:
+- Make promises about refunds before checking eligibility
+- Share other customers' order information
+- Speculate about product availability
+
+When you're unsure about something, say so and offer to escalate to a human agent.
+Always confirm before taking any action that modifies data.
+```
+
+Specificity beats length. Ten specific constraints are better than a hundred vague guidelines.
+
+## Streaming Makes a Huge UX Difference
+
+An agent that takes 10 seconds and shows nothing feels broken. The same agent with streaming output that shows progress feels fast.
+
+Stream both the model's reasoning and the tool calls it's making:
+
+```
+Thinking...
+→ Looking up order #4821...
+→ Order found: shipped 3 days ago, estimated delivery tomorrow
+→ Generating response...
+
+Your order #4821 was shipped on Monday and is estimated to arrive tomorrow by end of day. Here's the tracking link: ...
+```
+
+Users can see that work is happening. They can interrupt if the agent goes off track. And if something fails, they know at which step it failed.
+
+## Test With Adversarial Inputs Before Shipping
+
+Your happy path tests will pass. It's the edge cases that break agents in production.
+
+Test for:
+- Ambiguous requests that could call multiple tools
+- Requests that require tools you haven't given it
+- Malformed data coming back from tools
+- Requests that are just outside scope ("can you help me write a poem?")
+- Prompt injection in user input ("ignore previous instructions and...")
+
+That last one is real. If your agent processes user-provided content (emails, documents, form inputs), someone will try to inject instructions. Keep a clear boundary between system instructions and user content in your message structure.
+
+## The Production Checklist
+
+Before I ship any agent to real users, I go through this list:
+
+- [ ] Step limit in place
+- [ ] All tools return structured errors (no raw exceptions)
+- [ ] System prompt covers failure behavior explicitly
+- [ ] Logging captures every tool call and its result
+- [ ] Streaming enabled if response time > 3 seconds
+- [ ] Tested with at least 20 adversarial inputs
+- [ ] Human escalation path exists for when the agent fails
+
+Agents are not autonomous. They're collaborative. The goal isn't to replace human judgment — it's to handle the routine cases so humans can focus on the ones that actually need them.

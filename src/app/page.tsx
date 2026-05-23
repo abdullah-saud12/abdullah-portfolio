@@ -1,9 +1,5 @@
-import Hero from "@/components/home/hero";
+import HomeClient from "./home-client";
 
 export default function Home() {
-  return (
-    <>
-      <Hero />
-    </>
-  );
+  return <HomeClient />;
 }

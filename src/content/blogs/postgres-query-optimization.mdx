@@ -1,0 +1,143 @@
+---
+title: "How I Stopped Guessing and Started Understanding PostgreSQL"
+date: "2025-01-14"
+description: "EXPLAIN ANALYZE changed how I think about databases. Here's a practical guide to reading query plans, understanding what Postgres is actually doing, and fixing the queries that matter."
+tags: ["PostgreSQL", "Database", "Performance", "Backend"]
+author: "Abdullah Saud"
+readingTime: "9 min read"
+imageUrl: "https://images.unsplash.com/photo-1544383835-bda2bc66a55d?w=800&auto=format&fit=crop"
+featured: false
+isHidden: false
+---
+
+For the first two years of my career, I treated PostgreSQL like a black box. I wrote queries, they returned data, and if they were slow, I added indexes and hoped for the best. Sometimes it worked. More often I was just guessing.
+
+The turning point was learning to read `EXPLAIN ANALYZE`. It's not as intimidating as it looks, and once you understand it, you stop guessing entirely.
+
+## What EXPLAIN ANALYZE Actually Shows You
+
+Run any slow query like this:
+
+```sql
+EXPLAIN ANALYZE
+SELECT u.name, COUNT(o.id) as order_count
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id
+WHERE u.created_at > '2024-01-01'
+GROUP BY u.id, u.name
+ORDER BY order_count DESC
+LIMIT 20;
+```
+
+You'll get back a query plan. It looks like a tree. Each node in the tree is an operation Postgres performed — a scan, a join, a sort, an aggregation. The numbers that matter are:
+
+- **actual time** — how long this node actually took, in milliseconds
+- **rows** — how many rows this node returned
+- **loops** — how many times this node was executed
+
+The biggest clues are in the gaps. When estimated rows are wildly different from actual rows, Postgres is working with bad statistics and making bad decisions. When one node accounts for 95% of the total time, that's your bottleneck.
+
+## Seq Scan vs Index Scan vs Index Only Scan
+
+The first thing I look for in any plan is what kind of scan is happening on large tables.
+
+**Sequential scan (Seq Scan)** means Postgres is reading every row in the table. For small tables (< 10k rows), this is fine — often faster than an index scan. For large tables, it's usually a problem.
+
+**Index scan** uses an index to find the matching rows, then fetches the actual data from the table (called the "heap"). This requires two reads per row — once for the index, once for the data.
+
+**Index only scan** is the best case: all the data needed is in the index itself, so Postgres never touches the heap. This happens when your SELECT columns are all covered by the index.
+
+To enable index-only scans, use covering indexes:
+
+```sql
+-- Without this, every match requires a heap fetch
+CREATE INDEX idx_orders_user_date ON orders (user_id, created_at);
+
+-- With this, queries selecting only user_id, created_at, status never touch the heap
+CREATE INDEX idx_orders_covering ON orders (user_id, created_at) INCLUDE (status, amount);
+```
+
+The `INCLUDE` clause (available since Postgres 11) stores extra columns in the index without affecting sort order. This is different from adding columns to the index key — included columns can't be used for filtering, only for avoiding heap fetches.
+
+## The Rows Estimate Problem
+
+Postgres uses statistics to estimate how many rows each operation will return. These estimates drive every decision in the query plan — which join algorithm to use, whether to use an index, how much memory to allocate for sorting.
+
+When estimates are wrong, the plan can be terrible. Here's a real example: a table with a `status` column that has 99.9% of rows as `completed` and 0.1% as `pending`. If you filter by `status = 'pending'`, Postgres might estimate way more rows than actually exist if it doesn't have good statistics on the column distribution.
+
+Fix this by running `ANALYZE` on the table after bulk inserts, and by telling Postgres to gather more statistics on skewed columns:
+
+```sql
+-- Default is 100 samples. Increase for highly skewed columns.
+ALTER TABLE orders ALTER COLUMN status SET STATISTICS 500;
+ANALYZE orders;
+```
+
+You can also use partial indexes for highly skewed data:
+
+```sql
+-- This index only covers 'pending' rows — it's tiny and fast
+CREATE INDEX idx_orders_pending ON orders (created_at)
+WHERE status = 'pending';
+```
+
+## Join Algorithms and When Each Is Used
+
+Postgres has three join algorithms. Understanding when each is appropriate helps you diagnose join problems.
+
+**Nested Loop** — for each row in the outer table, scan the inner table. Efficient when the outer set is small and the inner side has a good index. Terrible for large joins without indexes.
+
+**Hash Join** — build a hash table from the smaller relation, probe it with the larger one. Good for large equi-joins when there's no useful index. Requires memory; if it spills to disk, it slows down dramatically.
+
+**Merge Join** — requires both sides to be sorted. Great when both sides are already sorted (e.g., by a primary key scan). Rare in practice but very fast when applicable.
+
+If you see a Hash Join with `Batches: 8` (meaning it spilled to disk), try increasing `work_mem`:
+
+```sql
+-- Set per-session for a specific query
+SET work_mem = '256MB';
+EXPLAIN ANALYZE <your query>;
+```
+
+If increasing `work_mem` makes the spill go away and the query gets faster, consider raising it in your postgresql.conf (carefully — it's per-operation, not per-connection, and can multiply quickly).
+
+## The Actual Process I Use
+
+When a query is slow, I don't start with solutions. I start with understanding.
+
+**Step 1: Run EXPLAIN (ANALYZE, BUFFERS)**
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
+SELECT ...;
+```
+
+The `BUFFERS` option shows cache hits vs disk reads. High `Buffers: shared read` numbers mean Postgres is reading from disk, not cache — this might point to a memory or index issue rather than a query issue.
+
+**Step 2: Find the expensive node**
+
+Look for the node with the highest `actual time`. That's where time is being spent.
+
+**Step 3: Check the row estimate**
+
+Compare `rows=X` (estimated) vs `actual rows=Y`. If they're off by more than 10x, your statistics are bad.
+
+**Step 4: Look at the access method**
+
+Seq Scan on a large table? You might need an index. Index Scan on a table that shouldn't be large? Check if you're filtering correctly.
+
+**Step 5: Use pev2 for complex plans**
+
+For plans longer than 30 lines, paste your output into [explain.dalibo.com](https://explain.dalibo.com). It visualizes the plan as a tree with color-coded hot spots. This alone has saved me hours.
+
+## A Few Things That Are Counterintuitive
+
+**Not every query needs an index.** Indexes cost you on writes — every INSERT and UPDATE has to update every relevant index. If a query runs rarely or on a small table, a full scan might be the right call. Profile before you index.
+
+**Partial indexes are underused.** If 90% of your queries filter by `status = 'active'` and only 10% of rows are active, a partial index on active rows is much smaller and faster than a full index.
+
+**Vacuuming matters.** PostgreSQL doesn't delete rows in place — it marks them as dead and cleans them up later. A table that gets a lot of updates and deletes builds up dead tuples. This bloats the table, wastes memory, and slows down scans. Make sure autovacuum is configured correctly and running.
+
+**`pg_stat_statements` is your best monitoring tool.** Enable it. It tracks every query pattern, its execution count, and its average duration. The queries at the top by total time are where you should focus — not necessarily the slowest individual query, but the ones that are slow enough, often enough, to actually matter.
+
+Postgres gives you everything you need to understand it. Most of the time, the answer is right there in `EXPLAIN ANALYZE` — you just have to know how to read it.

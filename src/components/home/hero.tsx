@@ -7,6 +7,7 @@ import { Mail, FileText, ChevronDown, Cpu, Layers, Zap } from "lucide-react";
 import { SiGithub } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import TechTicker from "./tech-ticker";
+import AudienceSwitch from "@/components/audience-switch";
 import { useTheme } from "@/components/providers/theme-provider";
 
 const AVATAR_URL =
@@ -65,6 +66,11 @@ export default function Hero() {
             animate="visible"
             className="space-y-3 sm:space-y-4 flex flex-col justify-center items-center w-full"
           >
+
+            {/* Audience switch — top */}
+            <motion.div variants={itemVariants}>
+              <AudienceSwitch />
+            </motion.div>
 
             {/* Avatar with availability indicator */}
             <motion.div variants={itemVariants} className="flex justify-center">
@@ -181,11 +187,11 @@ export default function Hero() {
             {/* Social links + scroll */}
             <motion.div variants={itemVariants} className="flex flex-col items-center gap-3 pt-4">
               <div className="flex items-center gap-6">
-                <a href="https://x.com/YOUR_HANDLE" target="_blank" rel="noopener noreferrer" aria-label="Twitter"
+                <a href="https://www.google.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter"
                   className={`hover:scale-110 transition-all ${isLight ? "text-gray-500 hover:text-gray-900" : "text-gray-400 hover:text-white"}`}>
                   <XIcon />
                 </a>
-                <a href="https://linkedin.com/in/YOUR_HANDLE" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"
+                <a href="https://www.linkedin.com/in/imabd" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"
                   className={`hover:scale-110 transition-all ${isLight ? "text-gray-500 hover:text-gray-900" : "text-gray-400 hover:text-white"}`}>
                   <FaLinkedin size={20} />
                 </a>
