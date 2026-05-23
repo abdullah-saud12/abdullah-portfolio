@@ -7,6 +7,7 @@ import { Mail, FileText, ChevronDown, Cpu, Layers, Zap } from "lucide-react";
 import { SiGithub } from "react-icons/si";
 import { FaLinkedin } from "react-icons/fa";
 import TechTicker from "./tech-ticker";
+import AudienceSwitch from "@/components/audience-switch";
 import { useTheme } from "@/components/providers/theme-provider";
 
 const AVATAR_URL =
@@ -65,6 +66,11 @@ export default function Hero() {
             animate="visible"
             className="space-y-3 sm:space-y-4 flex flex-col justify-center items-center w-full"
           >
+
+            {/* Audience switch — top */}
+            <motion.div variants={itemVariants}>
+              <AudienceSwitch />
+            </motion.div>
 
             {/* Avatar with availability indicator */}
             <motion.div variants={itemVariants} className="flex justify-center">

@@ -1,0 +1,339 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { usePathname } from "next/navigation";
+
+interface Position { x: number; y: number; }
+
+interface SpriteSet { [key: string]: [number, number][]; }
+
+const SPRITE_SETS: SpriteSet = {
+  idle:         [[-3, -3]],
+  alert:        [[-7, -3]],
+  scratchSelf:  [[-5, 0], [-6, 0], [-7, 0]],
+  scratchWallN: [[0, 0], [0, -1]],
+  scratchWallS: [[-7, -1], [-6, -2]],
+  scratchWallE: [[-2, -2], [-2, -3]],
+  scratchWallW: [[-4, 0], [-4, -1]],
+  tired:        [[-3, -2]],
+  sleeping:     [[-2, 0], [-2, -1]],
+  N:  [[-1, -2], [-1, -3]],
+  NE: [[0, -2], [0, -3]],
+  E:  [[-3, 0], [-3, -1]],
+  SE: [[-5, -1], [-5, -2]],
+  S:  [[-6, -3], [-7, -2]],
+  SW: [[-5, -3], [-6, -1]],
+  W:  [[-4, -2], [-4, -3]],
+  NW: [[-1, 0], [-1, -1]],
+};
+
+const NEKO_SPEED = 12;
+const LONG_PRESS_DURATION = 500;
+const STORAGE_KEY_DISABLED = "oneko-cat-disabled";
+const STORAGE_KEY_SPRITE = "oneko-sprite-type";
+
+type SpriteType = "cat" | "dog";
+
+export default function OnekoCat() {
+  const pathname = usePathname();
+  const nekoRef = useRef<HTMLDivElement>(null);
+  const [nekoPos, setNekoPos] = useState<Position>({ x: 32, y: 32 });
+  const [mousePos, setMousePos] = useState<Position>({ x: 0, y: 0 });
+  const [frameCount, setFrameCount] = useState(0);
+  const [idleTime, setIdleTime] = useState(0);
+  const [idleAnimation, setIdleAnimation] = useState<string | null>(null);
+  const [idleAnimationFrame, setIdleAnimationFrame] = useState(0);
+  const [isVisible, setIsVisible] = useState(true);
+  const [isDisabled, setIsDisabled] = useState(false);
+  const [spriteType, setSpriteType] = useState<SpriteType>("cat");
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState<Position>({ x: 0, y: 0 });
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const lastFrameTimestamp = useRef<number | null>(null);
+  const animationFrameId = useRef<number | null>(null);
+  const lastTapTime = useRef<number>(0);
+  const tapCount = useRef<number>(0);
+  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPos = useRef<Position | null>(null);
+
+  const setSprite = (name: string, frame: number) => {
+    if (!nekoRef.current) return;
+    const sprite = SPRITE_SETS[name][frame % SPRITE_SETS[name].length];
+    nekoRef.current.style.backgroundPosition = `${sprite[0] * 32}px ${sprite[1] * 32}px`;
+  };
+
+  const resetIdleAnimation = () => {
+    setIdleAnimation(null);
+    setIdleAnimationFrame(0);
+  };
+
+  const handleIdle = () => {
+    setIdleTime((prev) => prev + 1);
+    if (idleTime > 10 && Math.floor(Math.random() * 200) === 0 && !idleAnimation) {
+      const anims = ["sleeping", "scratchSelf"];
+      if (nekoPos.x < 32) anims.push("scratchWallW");
+      if (nekoPos.y < 32) anims.push("scratchWallN");
+      if (nekoPos.x > window.innerWidth - 32) anims.push("scratchWallE");
+      if (nekoPos.y > window.innerHeight - 32) anims.push("scratchWallS");
+      setIdleAnimation(anims[Math.floor(Math.random() * anims.length)]);
+    }
+    switch (idleAnimation) {
+      case "sleeping":
+        if (idleAnimationFrame < 8) { setSprite("tired", 0); break; }
+        setSprite("sleeping", Math.floor(idleAnimationFrame / 4));
+        if (idleAnimationFrame > 192) resetIdleAnimation();
+        break;
+      case "scratchWallN":
+      case "scratchWallS":
+      case "scratchWallE":
+      case "scratchWallW":
+      case "scratchSelf":
+        setSprite(idleAnimation, idleAnimationFrame);
+        if (idleAnimationFrame > 9) resetIdleAnimation();
+        break;
+      default:
+        setSprite("idle", 0);
+        return;
+    }
+    setIdleAnimationFrame((prev) => prev + 1);
+  };
+
+  const handleFrame = () => {
+    if (!nekoRef.current) return;
+    if (isDisabled) {
+      if (idleAnimation === "sleeping") {
+        if (idleAnimationFrame < 8) setSprite("tired", 0);
+        else setSprite("sleeping", Math.floor(idleAnimationFrame / 4));
+        setIdleAnimationFrame((prev) => prev + 1);
+      } else {
+        setSprite("idle", 0);
+      }
+      return;
+    }
+    setFrameCount((prev) => prev + 1);
+    const diffX = nekoPos.x - mousePos.x;
+    const diffY = nekoPos.y - mousePos.y;
+    const distance = Math.sqrt(diffX ** 2 + diffY ** 2);
+    if (distance < NEKO_SPEED || distance < 48) { handleIdle(); return; }
+    setIdleAnimation(null);
+    setIdleAnimationFrame(0);
+    if (idleTime > 1) { setSprite("alert", 0); setIdleTime((prev) => Math.max(prev - 1, 0)); return; }
+    let direction = "";
+    direction += diffY / distance > 0.5 ? "N" : "";
+    direction += diffY / distance < -0.5 ? "S" : "";
+    direction += diffX / distance > 0.5 ? "W" : "";
+    direction += diffX / distance < -0.5 ? "E" : "";
+    setSprite(direction, frameCount);
+    setNekoPos({
+      x: Math.min(Math.max(16, nekoPos.x - (diffX / distance) * NEKO_SPEED), window.innerWidth - 16),
+      y: Math.min(Math.max(16, nekoPos.y - (diffY / distance) * NEKO_SPEED), window.innerHeight - 16),
+    });
+    setIdleTime(0);
+  };
+
+  useEffect(() => {
+    const storedDisabled = localStorage.getItem(STORAGE_KEY_DISABLED);
+    if (storedDisabled === "true") { setIsDisabled(true); setIdleAnimation("sleeping"); }
+    const storedSprite = localStorage.getItem(STORAGE_KEY_SPRITE) as SpriteType;
+    if (storedSprite === "cat" || storedSprite === "dog") setSpriteType(storedSprite);
+    return () => {
+      if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
+      if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node))
+        setShowContextMenu(false);
+    };
+    if (showContextMenu) {
+      document.addEventListener("click", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+      return () => {
+        document.removeEventListener("click", handleClickOutside);
+        document.removeEventListener("touchstart", handleClickOutside);
+      };
+    }
+  }, [showContextMenu]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDisabled) return;
+      setMousePos({ x: e.clientX, y: e.clientY });
+      setIdleTime(0);
+    };
+    const handleClick = () => {
+      if (isDisabled || !nekoRef.current) return;
+      nekoRef.current.style.transform = "scale(1.2)";
+      setTimeout(() => { if (nekoRef.current) nekoRef.current.style.transform = "scale(1)"; }, 100);
+    };
+    const handleVisibilityChange = () => setIsVisible(!document.hidden);
+    const animate = (timestamp: number) => {
+      if (!lastFrameTimestamp.current) lastFrameTimestamp.current = timestamp;
+      if (timestamp - lastFrameTimestamp.current > 100) {
+        lastFrameTimestamp.current = timestamp;
+        handleFrame();
+      }
+      animationFrameId.current = requestAnimationFrame(animate);
+    };
+    const isReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!isReducedMotion && isVisible) {
+      if (!isDisabled) {
+        document.addEventListener("mousemove", handleMouseMove);
+        document.addEventListener("click", handleClick);
+      }
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      animationFrameId.current = requestAnimationFrame(animate);
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("click", handleClick);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+    };
+  }, [nekoPos, mousePos, frameCount, idleTime, idleAnimation, idleAnimationFrame, isVisible, isDisabled]);
+
+  const showContextMenuAtPosition = useCallback((x: number, y: number) => {
+    const menuWidth = 150;
+    const menuHeight = 80;
+    const padding = 8;
+    setContextMenuPos({
+      x: Math.max(padding, Math.min(x, window.innerWidth - menuWidth - padding)),
+      y: Math.max(padding, Math.min(y, window.innerHeight - menuHeight - padding)),
+    });
+    setShowContextMenu(true);
+  }, []);
+
+  const toggleDisabledState = useCallback(() => {
+    const next = !isDisabled;
+    setIsDisabled(next);
+    if (next) { setIdleAnimation("sleeping"); setIdleAnimationFrame(0); }
+    else { setIdleAnimation(null); setIdleAnimationFrame(0); }
+    localStorage.setItem(STORAGE_KEY_DISABLED, String(next));
+  }, [isDisabled]);
+
+  const clearLongPressTimeout = useCallback(() => {
+    if (longPressTimeoutRef.current) { clearTimeout(longPressTimeoutRef.current); longPressTimeoutRef.current = null; }
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    showContextMenuAtPosition(e.clientX, e.clientY);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation(); toggleDisabledState();
+  };
+
+  const handleSpriteChange = (type: SpriteType) => {
+    setSpriteType(type);
+    localStorage.setItem(STORAGE_KEY_SPRITE, type);
+    setShowContextMenu(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const touch = e.touches[0];
+    const now = Date.now();
+    const timeSinceLast = now - lastTapTime.current;
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
+    clearLongPressTimeout();
+    tapCount.current = timeSinceLast < 300 && timeSinceLast > 0 ? tapCount.current + 1 : 1;
+    lastTapTime.current = now;
+    if (tapCount.current === 2) { toggleDisabledState(); tapCount.current = 0; }
+    else {
+      longPressTimeoutRef.current = setTimeout(() => {
+        if (touchStartPos.current) showContextMenuAtPosition(touchStartPos.current.x, touchStartPos.current.y);
+        tapCount.current = 0;
+      }, LONG_PRESS_DURATION);
+      tapTimeoutRef.current = setTimeout(() => { tapCount.current = 0; }, 300);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault(); clearLongPressTimeout();
+    const touch = e.touches[0];
+    if (touchStartPos.current) {
+      const dx = touch.clientX - touchStartPos.current.x;
+      const dy = touch.clientY - touchStartPos.current.y;
+      if (Math.sqrt(dx * dx + dy * dy) > 10) tapCount.current = 0;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault(); clearLongPressTimeout(); touchStartPos.current = null;
+  };
+
+  if (!isVisible || pathname?.startsWith("/blog")) return null;
+
+  const spriteImage = spriteType === "cat" ? "/oneko.gif" : "/oneko-dog.gif";
+
+  return (
+    <>
+      <div
+        ref={nekoRef}
+        aria-hidden="true"
+        onContextMenu={handleContextMenu}
+        onDoubleClick={handleDoubleClick}
+        onMouseDown={(e) => { if (e.button === 2) { e.preventDefault(); e.stopPropagation(); } }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{
+          width: "32px", height: "32px",
+          position: "fixed",
+          pointerEvents: "auto",
+          cursor: "pointer",
+          imageRendering: "pixelated",
+          left: `${nekoPos.x - 16}px`,
+          top: `${nekoPos.y - 16}px`,
+          zIndex: 9999,
+          backgroundImage: `url(${spriteImage})`,
+          transition: "transform 0.1s ease-out",
+          filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.3))",
+          opacity: isDisabled ? 0.5 : 1,
+          touchAction: "none",
+          userSelect: "none",
+        }}
+      />
+      {showContextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{
+            position: "fixed",
+            left: `${contextMenuPos.x}px`,
+            top: `${contextMenuPos.y}px`,
+            zIndex: 10000,
+            backgroundColor: "rgba(0,0,0,0.9)",
+            backdropFilter: "blur(8px)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "8px",
+            padding: "4px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+            minWidth: "150px",
+          }}
+        >
+          {(["cat", "dog"] as SpriteType[]).map((type) => (
+            <button
+              key={type}
+              onClick={() => handleSpriteChange(type)}
+              style={{
+                width: "100%", padding: "8px 12px", textAlign: "left",
+                background: spriteType === type ? "rgba(255,255,255,0.1)" : "transparent",
+                border: "none", color: "#fff", cursor: "pointer",
+                borderRadius: "4px", fontSize: "14px", fontFamily: "inherit",
+              }}
+              onMouseEnter={(e) => { if (spriteType !== type) e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
+              onMouseLeave={(e) => { if (spriteType !== type) e.currentTarget.style.background = "transparent"; }}
+            >
+              {type === "cat" ? "Oneko Cat" : "OnlyCode Dog"}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

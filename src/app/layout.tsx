@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
+import { AudienceProvider } from "@/context/audience-provider";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
+import OnekoCat from "@/components/oneko-cat";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,6 +15,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -53,16 +61,19 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable}`}
+      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body className="min-h-screen flex flex-col bg-[var(--background)] text-[var(--foreground)] antialiased">
         <ThemeProvider>
-          <Navbar />
-          <main className="flex-1">
-            {children}
-          </main>
-          <Footer />
+          <AudienceProvider>
+            <Navbar />
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer />
+            <OnekoCat />
+          </AudienceProvider>
         </ThemeProvider>
       </body>
     </html>
