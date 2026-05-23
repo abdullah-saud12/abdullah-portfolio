@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    creator: "@YOUR_HANDLE",
+    creator: "@imabd",
     title: "Abdullah Saud — Full Stack Developer",
     description:
       "Full Stack Developer building modern web applications.",

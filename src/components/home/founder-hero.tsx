@@ -184,11 +184,11 @@ export default function FounderHero() {
             {/* Social links */}
             <motion.div variants={itemVariants} className="flex flex-col items-center gap-3 pt-2">
               <div className="flex items-center gap-6">
-                <a href="https://x.com/YOUR_HANDLE" target="_blank" rel="noopener noreferrer" aria-label="Twitter"
+                <a href="https://www.google.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter"
                   className={`hover:scale-110 transition-all ${isLight ? "text-gray-500 hover:text-gray-900" : "text-gray-400 hover:text-white"}`}>
                   <XIcon />
                 </a>
-                <a href="https://linkedin.com/in/YOUR_HANDLE" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"
+                <a href="https://www.linkedin.com/in/imabd" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn"
                   className={`hover:scale-110 transition-all ${isLight ? "text-gray-500 hover:text-gray-900" : "text-gray-400 hover:text-white"}`}>
                   <FaLinkedin size={20} />
                 </a>

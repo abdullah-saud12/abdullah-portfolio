@@ -129,7 +129,7 @@ export default function Navbar() {
 
               {/* X */}
               <motion.a
-                href="https://x.com/YOUR_HANDLE"
+                href="https://www.google.com"
                 target="_blank" rel="noopener noreferrer"
                 whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                 aria-label="X (Twitter)"

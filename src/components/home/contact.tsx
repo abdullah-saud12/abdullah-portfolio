@@ -180,7 +180,7 @@ export default function Contact() {
               </a>
 
               <a
-                href="https://linkedin.com/in/YOUR_HANDLE"
+                href="https://www.linkedin.com/in/imabd"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`flex items-center gap-3 p-4 border transition-colors ${isLight ? "bg-white border-gray-200 hover:border-gray-300" : "bg-[#161b22] border-white/10 hover:border-white/20"}`}
