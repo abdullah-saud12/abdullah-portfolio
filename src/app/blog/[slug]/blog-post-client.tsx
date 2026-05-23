@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft, Calendar, Clock, ArrowRight,
@@ -54,7 +54,7 @@ interface Props {
   related: RelatedPost[];
 }
 
-type FontChoice = "geist" | "jetbrains";
+type FontChoice = "geist" | "inter" | "jetbrains";
 
 const MIN_SIZE = 14;
 const MAX_SIZE = 32;
@@ -63,9 +63,9 @@ const DEFAULT_SIZE = 18;
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
 
 function fontFamily(f: FontChoice) {
-  return f === "jetbrains"
-    ? "var(--font-jetbrains-mono), monospace"
-    : "var(--font-geist-sans), system-ui, sans-serif";
+  if (f === "jetbrains") return "var(--font-jetbrains-mono), monospace";
+  if (f === "inter") return "Inter, system-ui, sans-serif";
+  return "var(--font-geist-sans), system-ui, sans-serif";
 }
 
 function fmt(date: string, style: "long" | "short" = "long") {
@@ -106,26 +106,71 @@ function ThemeBtn({ isLight, toggleTheme }: { isLight: boolean; toggleTheme: () 
   );
 }
 
+const FONTS: { value: FontChoice; label: string; sample: string }[] = [
+  { value: "geist",    label: "Geist Sans",      sample: "Ag" },
+  { value: "inter",    label: "Inter",            sample: "Ag" },
+  { value: "jetbrains", label: "JetBrains Mono", sample: "Ag" },
+];
+
 function FontBtn({
-  isLight, font, toggleFont,
-}: { isLight: boolean; font: FontChoice; toggleFont: () => void }) {
-  const isJB = font === "jetbrains";
+  isLight, font, setFont, openUp = false,
+}: { isLight: boolean; font: FontChoice; setFont: (f: FontChoice) => void; openUp?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const isActive = font !== "geist";
   return (
-    <button
-      onClick={toggleFont}
-      title={isJB ? "Switch to Geist" : "Switch to JetBrains Mono"}
-      className={`flex items-center justify-center w-9 h-9 border transition-colors ${
-        isJB
-          ? isLight
-            ? "bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100"
-            : "bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20"
-          : isLight
-            ? "bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200"
-            : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
-      }`}
-    >
-      <Type size={15} />
-    </button>
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Change font"
+        className={`flex items-center justify-center w-9 h-9 border transition-colors ${
+          isActive
+            ? isLight
+              ? "bg-purple-50 border-purple-200 text-purple-600 hover:bg-purple-100"
+              : "bg-purple-500/10 border-purple-500/30 text-purple-400 hover:bg-purple-500/20"
+            : isLight
+              ? "bg-gray-100 border-gray-200 text-gray-600 hover:bg-gray-200"
+              : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10"
+        }`}
+      >
+        <Type size={15} />
+      </button>
+
+      {open && (
+        <div className={`absolute z-50 w-44 border shadow-xl overflow-hidden ${
+          openUp ? "bottom-full mb-2" : "top-full mt-2"
+        } left-0 ${
+          isLight ? "bg-white border-gray-200" : "bg-[#161b22] border-white/10"
+        }`}>
+          {FONTS.map(({ value, label, sample }) => (
+            <button
+              key={value}
+              onClick={() => { setFont(value); setOpen(false); }}
+              className={`w-full flex items-center justify-between px-3 py-2.5 text-sm transition-colors ${
+                font === value
+                  ? isLight ? "bg-gray-100 text-gray-900" : "bg-white/10 text-white"
+                  : isLight ? "text-gray-600 hover:bg-gray-50 hover:text-gray-900" : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }`}
+            >
+              <span>{label}</span>
+              <span className={`text-xs font-mono ${isLight ? "text-gray-400" : "text-gray-500"}`} style={{ fontFamily: fontFamily(value) }}>
+                {sample}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -199,7 +244,17 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
 
   const [fontSize, setFontSize] = useState(DEFAULT_SIZE);
   const [font, setFont] = useState<FontChoice>("geist");
-  const toggleFont = useCallback(() => setFont((f) => f === "geist" ? "jetbrains" : "geist"), []);
+
+  const proseRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = proseRef.current;
+    if (!el) return;
+    el.style.fontFamily = fontFamily(font);
+    el.querySelectorAll<HTMLElement>("p, li, dd, dt, figcaption, blockquote").forEach((child) => {
+      child.style.fontSize = `${fontSize}px`;
+      child.style.transition = "font-size 0.15s ease";
+    });
+  }, [fontSize, font]);
 
   const divider = <div className={`w-6 h-px my-1 ${isLight ? "bg-gray-200" : "bg-white/10"}`} />;
 
@@ -217,7 +272,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
       }`}>
         <ThemeBtn isLight={isLight} toggleTheme={toggleTheme} />
         {divider}
-        <FontBtn isLight={isLight} font={font} toggleFont={toggleFont} />
+        <FontBtn isLight={isLight} font={font} setFont={setFont} />
         {divider}
         <ZoomControls isLight={isLight} size={fontSize} setSize={setFontSize} vertical />
         {divider}
@@ -244,7 +299,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
           {/* Controls visible on md–xl */}
           <div className="flex items-center gap-2 xl:hidden">
             <ThemeBtn isLight={isLight} toggleTheme={toggleTheme} />
-            <FontBtn isLight={isLight} font={font} toggleFont={toggleFont} />
+            <FontBtn isLight={isLight} font={font} setFont={setFont} />
             <ZoomControls isLight={isLight} size={fontSize} setSize={setFontSize} />
             <ShareBtn isLight={isLight} />
           </div>
@@ -315,7 +370,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
           transition={{ duration: 0.5, delay: 0.15 }}
         >
           <div
-            style={{ fontSize: `${fontSize}px`, fontFamily: fontFamily(font) }}
+            ref={proseRef}
             className={`prose max-w-none
             ${isLight ? "prose-gray" : "prose-invert"}
             prose-headings:font-bold prose-headings:tracking-tight
@@ -416,7 +471,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <ThemeBtn isLight={isLight} toggleTheme={toggleTheme} />
           <div className="flex items-center gap-2">
-            <FontBtn isLight={isLight} font={font} toggleFont={toggleFont} />
+            <FontBtn isLight={isLight} font={font} setFont={setFont} openUp />
             <ZoomControls isLight={isLight} size={fontSize} setSize={setFontSize} />
           </div>
           <ShareBtn isLight={isLight} />
