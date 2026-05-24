@@ -44,7 +44,7 @@ export default function ProjectsClient() {
             className="text-center mt-16"
           >
             <div className={`inline-flex items-center gap-2 px-6 py-3 border text-sm ${isLight ? "bg-gray-100 border-gray-200 text-gray-600" : "bg-white/5 border-white/10 text-gray-400"}`}>
-              {projects.length} projects showcased
+              {projects.length} problems solved
             </div>
           </motion.div>
         </div>
