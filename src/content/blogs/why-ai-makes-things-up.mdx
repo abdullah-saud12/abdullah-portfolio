@@ -1,0 +1,125 @@
+---
+title: "Why AI Makes Things Up (And Why It Can't Help It)"
+date: "2026-05-25"
+description: "AI confidently told a lawyer about court cases that never existed. It told a student about a study that was never published. This isn't a bug they forgot to fix — it's baked into how these models work. Here's why."
+tags: ["AI", "LLM", "Explainer", "Hallucinations"]
+author: "Abdullah Saud"
+readingTime: "7 min read"
+imageUrl: "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=800&auto=format&fit=crop"
+featured: true
+isHidden: false
+---
+
+A lawyer in New York once submitted a court filing that cited six legal cases to support his argument. The judge asked for copies of those cases. The lawyer couldn't produce them. They didn't exist. He had used ChatGPT to help with the filing, and the AI had invented six fake court cases — complete with fake judges, fake dates, and fake rulings — and presented them with total confidence.
+
+This is what people mean when they say AI "hallucinates."
+
+It's a strange word for it. Hallucination makes you think of someone seeing pink elephants. But AI hallucinations are more unsettling than that — because the AI doesn't seem confused or uncertain. It just... makes things up, calmly, fluently, and with complete conviction.
+
+## First, What Is an AI Language Model?
+
+Before we can understand why this happens, we need a quick picture of what these AI systems actually are.
+
+ChatGPT, Claude, Gemini — these are all called "language models." They were trained by reading an enormous amount of text: websites, books, articles, forums, code, research papers. Trillions of words.
+
+During that training, the model learned one thing, over and over: **given some text, what word most likely comes next?**
+
+That's the core trick. You type "The sky is" and the model has seen that phrase so many times — always followed by "blue" or "clear" or "dark" — that it confidently completes the sentence.
+
+Scale that up massively. Add the ability to follow instructions. Add some fine-tuning to make it helpful and conversational. What you get is a system that can write essays, answer questions, translate languages, and debug code — all by being very, very good at predicting what text should come next.
+
+## So Where Do Hallucinations Come From?
+
+Here's the problem with building a system around "predict the next word": the model was never designed to *know* things. It was designed to *sound right*.
+
+Those are different skills.
+
+When you ask the model a question it truly knows the answer to — like "what is the capital of France?" — there's so much text in its training that reliably points to "Paris" that it gets it right almost every time.
+
+But when you ask it something more obscure — a niche legal case, a specific research paper, a local news event from 2019 — the model is in murkier territory. It doesn't have a database it can check. It can't Google it. It just has patterns.
+
+And here's what happens: instead of saying "I don't know," the model does what it was built to do. It predicts the most plausible-sounding continuation. It constructs an answer that *looks like* the kind of answer that would follow that question.
+
+The case name sounds like a real case. The citation format looks correct. The made-up study sounds exactly like a real study. Because the model has read thousands of real cases and thousands of real studies — it knows what they're supposed to look like.
+
+It's not lying. It doesn't know it's wrong. It's doing exactly what it was trained to do.
+
+## A Simple Way to Think About It
+
+Imagine you asked someone who had read every cookbook ever written to invent a new recipe. They'd probably do a great job — they've absorbed thousands of patterns about what flavors go together, what techniques work, what dishes are supposed to look like.
+
+Now ask that same person to recall the exact recipe their grandmother used to make. They never met the grandmother. They never read that specific recipe. But they might give you something — because they know what a grandmother's recipe is supposed to sound like. Butter. Simple techniques. A note about not overmixing. It would feel right, even if it was completely invented.
+
+That's an AI hallucination. A plausible construction, not a real memory.
+
+## Why Doesn't It Just Say "I Don't Know"?
+
+This is the question everyone asks. And it's a fair one.
+
+Part of the answer is that the model genuinely doesn't know the difference between "I actually know this" and "I'm pattern-matching my way through this." It has no internal flag that goes up when it's guessing.
+
+Think about it from your own experience: have you ever been completely confident about something — a name, a date, a fact — and turned out to be wrong? You weren't lying. You were pattern-matching from memory, and memory is reconstructive, not perfect. The AI has the same problem, just at a much larger scale and with no ability to notice the uncertainty.
+
+The other part is that AI models are trained on human feedback, and humans often reward confident-sounding answers over hesitant ones. If the model said "I'm not sure, but maybe..." to every question, it would feel useless. So there's pressure — built into the training — to sound assured.
+
+## The Scary Part: It's Usually Right
+
+Here's what makes hallucinations genuinely tricky: the model is right most of the time. Often very right. Which means you can't just dismiss everything it says.
+
+If you ask it to explain how photosynthesis works, it'll nail it. Ask it to summarize a news article you paste into the chat, it'll do it well. Ask it to fix a bug in your code, there's a good chance it'll find it.
+
+The danger is that it sounds equally confident whether it's right or making something up. There's no "confidence meter." No asterisk on the shaky answers. It delivers invented citations with the same calm authority as correct ones.
+
+So you end up in a situation where the tool is genuinely useful and genuinely unreliable at the same time. Which is a weird place to be.
+
+## Some Types of Questions Are Much Riskier Than Others
+
+Not all questions carry the same hallucination risk. Here's a rough mental model:
+
+**Lower risk:**
+- Explaining well-known concepts ("how does encryption work?")
+- Summarizing text you've given it ("summarize this contract")
+- Brainstorming ideas ("give me 10 blog post ideas about coffee")
+- Tasks with no single right answer ("write a cover letter for this job")
+
+**Higher risk:**
+- Asking for specific facts it would have to "remember" ("what did the FDA say about X drug in 2021?")
+- Legal or medical specifics ("what's the dosage for this medication?")
+- Asking about real people, events, or publications in niche areas
+- Anything where the answer needs to be verifiably accurate
+
+The pattern is: the more the answer depends on specific, obscure, or checkable facts — the more room there is for the model to fill in gaps with plausible-sounding fiction.
+
+## What's Being Done About It?
+
+A lot, actually. This is one of the most active areas of AI research right now.
+
+**Retrieval-Augmented Generation (RAG)** is a technique where, instead of relying on the model's internal knowledge, you first search a real database for relevant documents, then have the model answer based only on those documents. It's like giving the model an open-book exam instead of making it rely on memory. Most serious AI products use some version of this today.
+
+**Grounding and citations** — systems that require the model to point to the source for every claim it makes. If there's no source, there's no claim. This doesn't eliminate hallucinations but makes them more visible.
+
+**Better training** — newer models are explicitly trained to say "I don't know" more often, to express uncertainty, and to refuse questions where they don't have confident knowledge.
+
+**Human review** — in high-stakes settings (medicine, law, finance), the answer is still that a human needs to check the work. AI as a first draft, not a final answer.
+
+None of these are complete solutions. Hallucinations still happen, even in the best models. But they happen less often, and the gap between model generations is real.
+
+## How to Use AI Without Getting Burned
+
+If you use AI tools — for work, for research, for writing — here's the honest advice:
+
+**Trust it with tasks, not facts.** Ask it to reorganize your notes, improve your writing, generate ideas, explain a concept. These are tasks where "plausible" and "correct" overlap a lot.
+
+**Verify anything specific.** If the AI tells you a statistic, a date, a name, a legal citation — look it up. Treat it like a tip from a friend who's usually right but sometimes confidently wrong. Worth checking.
+
+**Don't use it for things that need to be right.** Medical dosages. Legal filings. Financial regulations. Real consequences come from wrong information in these areas. AI can help you understand the landscape, but a real expert needs to verify the specifics.
+
+**Notice when it can't possibly know.** If you ask about something that happened last month, something extremely local, or something in a niche field with little public writing — there's a higher chance it's guessing. Treat those answers accordingly.
+
+## The Honest Summary
+
+AI language models are genuinely impressive. They can help you think, write, learn, and build things faster than before. But they are not knowledge bases. They are pattern completion engines — very sophisticated ones, but pattern completion engines nonetheless.
+
+The lawyer who submitted fake cases wasn't dumb. He trusted a tool that sounds authoritative, without understanding what's actually happening under the hood. The model had no idea it was writing something that would end up in a courtroom. It was just doing its job: predicting what comes next.
+
+The more you understand what these systems are, the better you can use them — and the less likely you are to be the next person in front of a judge explaining why your AI made things up.
