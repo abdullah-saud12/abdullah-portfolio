@@ -9,7 +9,7 @@ const socialLinks = [
 export default function Footer() {
   return (
     <footer className="border-t border-[var(--border)] bg-[var(--background)]">
-      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
+      <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 px-4 pt-8 pb-24 sm:py-8 sm:flex-row sm:px-6">
 
         <p className="text-sm text-[var(--foreground-muted)]">
           © {new Date().getFullYear()} Abdullah Saud. All rights reserved.

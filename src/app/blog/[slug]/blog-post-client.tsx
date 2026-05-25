@@ -280,7 +280,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
       </div>
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
-      <div className="container mx-auto px-4 md:px-6 max-w-3xl pt-28 pb-32 md:pb-20">
+      <div className="container mx-auto px-4 md:px-6 max-w-3xl pt-28 pb-52 md:pb-20">
 
         {/* Back + top controls row */}
         <motion.div
@@ -465,7 +465,7 @@ export default function BlogPostClient({ frontmatter, content, related }: Props)
       </div>
 
       {/* ── Mobile bottom bar ─────────────────────────────────────────────── */}
-      <div className={`md:hidden fixed bottom-0 left-0 right-0 z-50 border-t backdrop-blur-xl transition-colors ${
+      <div className={`md:hidden fixed bottom-[72px] left-0 right-0 z-40 border-t backdrop-blur-xl transition-colors ${
         isLight ? "bg-white/95 border-gray-200" : "bg-[#0D1117]/95 border-white/10"
       }`}>
         <div className="flex items-center justify-between px-4 py-3 gap-3">
